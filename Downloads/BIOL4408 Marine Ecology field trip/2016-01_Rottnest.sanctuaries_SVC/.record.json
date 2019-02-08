@@ -1,0 +1,95 @@
+{
+  "created_at": ["2019-02-08T01:34:08.829592"],
+  "current_user_has_access": [true],
+  "current_user_is_owner": [true],
+  "deployment_count": [450],
+  "description": [""],
+  "files": [
+    {
+      "id": 9530,
+      "iscompressed": true,
+      "name": "2016-01_Rottnest.sanctuaries_SVC_Count.csv",
+      "user_id": 2
+    },
+    {
+      "id": 9531,
+      "iscompressed": true,
+      "name": "2016-01_Rottnest.sanctuaries_SVC_Length.csv",
+      "user_id": 2
+    },
+    {
+      "id": 9532,
+      "iscompressed": true,
+      "name": "2016-01_Rottnest.sanctuaries_SVC_Metadata.csv",
+      "user_id": 2
+    }
+  ],
+  "id": [835],
+  "info": [
+    {
+      "campaigninfoprop_id": 46,
+      "id": 231,
+      "property": {
+        "id": 46,
+        "is_filter": false,
+        "name": "Annotation: Taxa that have been ID'd"
+      },
+      "value": "Spiny lobster"
+    },
+    {
+      "campaigninfoprop_id": 55,
+      "id": 276,
+      "property": {
+        "id": 55,
+        "is_filter": true,
+        "name": "Annotation: Habitat information from each sample"
+      },
+      "value": "Cover of benthos and score of complexity"
+    },
+    {
+      "campaigninfoprop_id": 51,
+      "id": 261,
+      "property": {
+        "id": 51,
+        "is_filter": false,
+        "name": "Annotation: Type of Length measure"
+      },
+      "value": "Carapace length"
+    },
+    {
+      "campaigninfoprop_id": 50,
+      "id": 258,
+      "property": {
+        "id": 50,
+        "is_filter": true,
+        "name": "Annotation: Lengths measured for"
+      },
+      "value": "All spiny lobster"
+    }
+  ],
+  "name": ["2016-01_Rottnest.sanctuaries_SVC"],
+  "platform": {
+    "created_at": ["2017-05-04T06:56:34.962233"],
+    "fileurl": ["/api/platform_file/1"],
+    "id": [1],
+    "name": ["stereo-BRUVs"]
+  },
+  "project": {
+    "current_user_is_member": [true],
+    "current_user_is_owner": [true],
+    "grouptype": ["project"],
+    "id": [205],
+    "is_public": [false],
+    "name": ["BIOL4408 Marine Ecology field trip"]
+  },
+  "project_id": [205],
+  "user": {
+    "email": ["tim.langlois@uwa.edu.au"],
+    "first_name": ["Tim"],
+    "id": [2],
+    "is_admin": [false],
+    "last_name": ["Langlois"],
+    "role_id": {}
+  },
+  "workgroups": []
+}

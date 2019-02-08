@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1549517535105.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "9971EBF4",
+    "lastKnownWriteTime" : 1549592053,
+    "last_content_update" : 1549592053596,
+    "path" : "C:/GitHub/BIOL4408/BIOL4408_split into years.R",
+    "project_path" : "BIOL4408_split into years.R",
+    "properties" : {
+        "cursorPosition" : "90,13",
+        "scrollLine" : "73",
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

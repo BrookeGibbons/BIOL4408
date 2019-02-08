@@ -1,0 +1,482 @@
+# Script to bring in all files downloaded from GA - make changes - and then save each individual file again - Brooke
+
+## Clear memory ----
+rm(list=ls())
+
+## Libraries ----
+library(googlesheets)
+library(dplyr) 
+library(stringr)
+library(purrr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+library(fuzzyjoin)
+library(forcats)
+
+# Set working and sub directories ----
+work.dir<-("C:/Users/00097191/Google Drive/MEG/Analysis_GlobalArchive_Australia") # Brooke
+work.dir<-("C:/Users/00097191/Google Drive (brooke.a.gibbons@gmail.com)/MEG/Analysis/Analysis_GlobalArchive_Australia") # Brooke
+#work.dir<-("~/Google Drive/new_GA")
+
+checked = paste(work.dir,"Data downloads/checked.and.ready",sep="/")
+new.dir = paste(work.dir,"Data downloads/new.uploads",sep="/")
+
+# Functions ----
+capitalise=function(x) paste0(toupper(substr(x, 1, 1)), tolower(substring(x, 2)))
+
+clean_names <- function(dat){
+  # Takes a data.frame, returns the same data frame with cleaned names
+  old_names <- names(dat)
+  new_names <- old_names %>%
+    gsub("%", "percent", .) %>%
+    make.names(.) %>%
+    gsub("[.]+", ".", .) %>%
+    tolower(.) %>%
+    gsub("_$", "", .)
+  setNames(dat, new_names)
+}
+
+remove.commas <- function(c){
+  ( gsub(",", '.', c))
+}
+
+remove.colon <- function(c){
+  ( gsub(";", '.', c))
+}
+
+remove<-function(c){
+  ( gsub(" ", " ", c))
+}
+
+# Bring in all static data sets used to check ----
+setwd(work.dir)
+dir()
+# comments used to remove drops where unsuccussful ----
+successful <- read.csv("Successful.count.and length.csv")
+
+# METADATA ----
+metadata.files<-dir(checked,pattern="_metadata.txt") # 204
+metadata <- data.frame(FileID = metadata.files)%>%
+  dplyr::mutate(file_contents = map(FileID,          
+                                    ~ read_tsv(file.path(checked, .),col_types = cols(.default = "c"))))
+metadata<-tidyr::unnest(metadata)%>%#select(-FileID)%>%
+  mutate(Location=str_replace_all(Location,"[^[:alnum:]]", "."))%>% # Replace non-alphanumeric
+  mutate(Date=str_replace_all(.$Date,"-",""))%>%
+  mutate(ID=paste(CampaignID,Sample,sep="."))%>%
+  select(-c(Successful.length))%>%
+  left_join(.,successful,by=c("CampaignID","Sample"))%>%
+  replace_na(list(Successful.count = "Yes",Status = "Fished"))%>%
+  dplyr::mutate(Status = fct_recode(Status, "No-take" = "No-Take", "No-take" = "NoTake", "No-take" = "No Take", "Fished" = "FISHED","Fished" = "Outside","Fished" = "Fishes", "Fished" = "FishedNoTrawl", "Fished"="FALSE","No-take" = "MPA", "No-take" = "Reserve","No-take" = "No take", "No-take" = "Not Fished","Fished"="CMR","No-take"="Port"))%>% 
+  distinct()%>%
+  #select(ID,CampaignID,Sample,Latitude,Longitude,Date,Time,Location,Status,Site,Depth,Observer,Successful.count,Successful.length,Comment)%>%
+  glimpse()
+
+names(metadata)%>%sort()
+unique(metadata$Status) # can only be (Fished, No-take, I, II, III, IV, V, VI)
+unique(metadata$Date) # yyyymmdd (e.g.19990101)
+unique(metadata$Successful.length) # (must be Yes/No)
+unique(metadata$Successful.count) # (must be Yes/No)
+length(unique(metadata$ID)) # Sample must be unique (no duplicates) - need to use ID to test and should be same length as metadata
+
+
+metadata[] <- sapply(metadata, remove.commas)
+metadata[] <- sapply(metadata, remove.colon)
+metadata[] <- sapply(metadata, remove)
+metadata$Comments = str_replace_all(metadata$Comments, "[\r\n]" , "")
+
+
+# Attempt to save 204 files at once ----
+setwd(new.dir)
+dir()
+
+uniq <- unique(unlist(metadata$CampaignID))
+for (i in 1:length(uniq)){
+    temp <- subset(metadata, CampaignID == uniq[i])
+    id<-temp$CampaignID
+    
+    # Remove columns where all are NA
+    temp2<-temp%>%
+      select(-c("Campaign IDs",CampaignID,FileID,ID,Successful))
+    temp3 <- temp2[,which(unlist(lapply(temp2, function(x)!all(is.na(x)))))]
+    
+    # Make an empty data frame to bring back in any columns that were removed but need to be in the data
+    columns<-c("Sample","Latitude","Longitude","Date","Time","Location","Status","Site","Depth","Observer","Successful.count","Successful.length","Comment")%>%
+      map_dfr( ~tibble(!!.x := logical() ) )
+    
+    # Add back in cols that may have been deleted
+    temp4<-bind_rows(columns, temp3)
+    
+    # write file
+    write.csv(temp4, file=paste(unique(id),"_Metadata.csv",sep=""), quote=FALSE,row.names = FALSE)
+  }
+
+### Event measure files ----
+# Import EventMeasure points----
+points.files<-dir(checked,pattern="_points.txt") # 84
+points <- data.frame(FileID = points.files) %>%
+  dplyr::mutate(file_contents = map(FileID,
+                                    ~ read_tsv(file.path(checked, .),col_types = cols(.default = "c"))))%>%
+  tidyr::unnest()%>%
+  dplyr::select(-c(FileID))%>%
+  mutate(Number=as.integer(Number))%>%
+  replace_na(list(Number = 0))%>%
+  glimpse()%>%
+  replace_na(list(Family = "Unknown",Genus = "Unknown", Species= "spp"))%>%
+  mutate(Family=ifelse(Genus%in%c("Cephalopholis"),"Serranidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Chaetodon"),"Chaetodontidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Helicolenus"),"Sebastidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Scomberomorus"),"Scombridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Dinolestes"),"Dinolestidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Pterocaesio"),"Caesionidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Lutjanus"),"Lutjanidae",Family))%>%
+  mutate(Genus=ifelse(Genus%in%c("Genus"),"Unknown",Genus))
+
+
+test<-points%>%
+  filter(is.na(Family))
+points[] <- sapply(points, remove.commas)
+unique(points$Number)%>%sort()
+
+test.points<-points%>%filter(is.na(Species))%>%
+  distinct(Family,Genus,Species)
+
+# Import EM lengths----
+lengths.files<-dir(checked,pattern="_lengths.txt") # 81
+lengths <- data.frame(CampaignID = lengths.files) %>%
+  dplyr::mutate(file_contents = map(CampaignID,
+                                    ~ read_tsv(file.path(checked, .),col_types = cols(.default = "c"))))  
+lengths<-tidyr::unnest(lengths)%>%
+  dplyr::mutate(CampaignID=str_replace_all(CampaignID,"_lengths.txt",""))%>%
+  mutate(Number=as.integer(Number))%>%
+  replace_na(list(Number = 0))%>%select(-c(CampaignID1,FileID))%>%
+  replace_na(list(Family = "Unknown",Genus = "Unknown", Species= "spp"))%>%
+  glimpse()%>%
+  mutate(Family=ifelse(Genus%in%c("Opistognathus"),"Opistognathidae",Family))
+
+unique(lengths$Number)%>%sort()
+
+test.length<-lengths%>%
+  filter(is.na(Species))%>%
+  distinct(Family,Genus,Species)
+
+# Import EM 3dpoints----
+threedpoints.files<-dir(checked,pattern="_3dpoints.txt")# 82
+threedpoints <- data.frame(Campaignid1 = threedpoints.files) %>%
+  dplyr::mutate(file_contents = map(Campaignid1,
+                                    ~ read_tsv(file.path(checked, .),col_types = cols(.default = "c"))))  
+threedpoints<-tidyr::unnest(threedpoints)%>%
+  dplyr::mutate(CampaignID=str_replace_all(Campaignid1,"_3dpoints.txt",""))%>%
+  mutate(Number=as.integer(Number))%>%
+  replace_na(list(Number = 0))%>%
+  select(-c(Campaignid1,FileID))%>%glimpse()%>%
+  replace_na(list(Family = "Unknown",Genus = "Unknown", Species= "spp"))
+
+unique(threedpoints$Number)%>%sort()
+unique(threedpoints$Campaignid1)
+names(points)
+
+test.3d<-threedpoints%>%filter(is.na(Genus))%>%
+  distinct(Family,Genus,Species)
+
+## Save files -----
+# Save Points ----
+setwd(new.dir)
+uniq <- unique(unlist(points$CampaignID))
+for (i in 1:length(uniq)){
+  temp <- subset(points, CampaignID == uniq[i])
+  id<-temp$CampaignID
+  CampaignID<-id
+  OpCode<-as.factor(temp$OpCode)
+  PointIndex<-temp$PointIndex
+  Filename<-temp$Filename
+  Frame<-temp$Frame
+  Time<-temp$Time
+  PeriodTime<-as.numeric(temp$PeriodTime)
+  ImageCol<-temp$ImageCol
+  ImageRow<-temp$ImageRow
+  Family<-temp$Family
+  Genus<-temp$Genus
+  Species<-temp$Species
+  Code<-temp$Code
+  Number<-as.integer(temp$Number)
+  Stage<-temp$Stage
+  Activity<-temp$Activity
+  Comment<-temp$Comment
+  Period<-temp$Period
+  Attribute9<-temp$Attribute9
+  Attribute10<-temp$Attribute10
+  
+  # Bind colums together and save txt files --
+  temp2<-data.frame(OpCode, PointIndex, Filename, Frame, Time, PeriodTime, ImageCol, ImageRow, Family, Genus, Species, Code, Number, Stage, Activity, Comment, Period, Attribute9, Attribute10)
+  write.table(temp2, file=paste(unique(id),"_Points.txt",sep=""), sep="\t",quote=FALSE,row.names = FALSE)
+}
+
+unique(points$Period)
+
+
+# Save lengths ----
+setwd(new.dir)
+names(lengths)
+
+uniq <- unique(unlist(lengths$CampaignID))
+for (i in 1:length(uniq)){
+  temp <- subset(lengths, CampaignID == uniq[i])
+  id<-temp$CampaignID
+  CampaignID<-id
+  OpCode<-as.factor(temp$OpCode)
+  ImagePtPair<-temp$ImagePtPair
+  FilenameLeft<-temp$FilenameLeft
+  FrameLeft<-temp$FrameLeft
+  FilenameRight<-temp$FilenameRight
+  FrameRight<-temp$FrameRight
+  Time<-temp$Time
+  Period<-temp$Period
+  PeriodTime<-as.numeric(temp$PeriodTime)
+  Length<-temp$Length
+  Precision<-temp$Precision
+  RMS<-temp$RMS
+  Range<-temp$Range
+  Direction<-temp$Direction
+  HorzDir<-temp$HorzDir
+  VertDir<-temp$VertDir
+  MidX<-temp$MidX
+  MidY<-temp$MidY
+  MidZ<-temp$MidZ
+  Family<-temp$Family
+  Genus<-temp$Genus
+  Species<-temp$Species
+  Code<-temp$Code
+  Number<-as.integer(temp$Number)
+  Stage<-temp$Stage
+  Activity<-temp$Activity
+  Comment<-temp$Comment
+  Attribute9<-temp$Attribute9
+  Attribute10<-temp$Attribute10
+  
+  # Bind colums together and save txt files --
+  temp2<-data.frame(OpCode,ImagePtPair,FilenameLeft,FrameLeft,FilenameRight,FrameRight,Time,Period,PeriodTime,Length,Precision,RMS,Range,Direction,HorzDir,VertDir,MidX,MidY,MidZ,Family,Genus,Species,Code,Number,Stage,Activity,Comment,Attribute9,Attribute10 )
+  write.table(temp2, file=paste(unique(id),"_Lengths.txt",sep=""), sep="\t",quote=FALSE,row.names = FALSE)
+}
+
+# Save 3D Points ----
+setwd(new.dir)
+names(threedpoints)
+
+uniq <- unique(unlist(threedpoints$CampaignID))
+
+for (i in 1:length(uniq)){
+  temp <- subset(threedpoints, CampaignID == uniq[i])
+  id<-temp$CampaignID
+  CampaignID<-id
+  OpCode<-as.factor(temp$OpCode)
+  ImagePtPair<-temp$ImagePtPair
+  FilenameLeft<-temp$FilenameLeft
+  FrameLeft<-temp$FrameLeft
+  FilenameRight<-temp$FilenameRight
+  FrameRight<-temp$FrameRight
+  Time<-temp$Time
+  Period<-temp$Period
+  PeriodTime<-as.numeric(temp$PeriodTime)
+  X<-temp$X
+  Y<-temp$Y
+  Z<-temp$Z
+  sX<-temp$sX
+  sY<-temp$sY
+  sZ<-temp$sZ
+  RMS<-temp$RMS
+  Range<-temp$Range
+  Direction<-temp$Direction
+  Family<-temp$Family
+  Genus<-temp$Genus
+  Species<-temp$Species
+  Code<-temp$Code
+  Number<-as.integer(temp$Number)
+  Stage<-temp$Stage
+  Activity<-temp$Activity
+  Comment<-temp$Comment
+  Attribute9<-temp$Attribute9
+  Attribute10<-temp$Attribute10
+  
+  # Bind colums together and save txt files --
+  temp2<-data.frame(OpCode,ImagePtPair,FilenameLeft,FrameLeft,FilenameRight,FrameRight,Time,Period,PeriodTime,X,Y,Z,sX,sY,sZ,RMS,Range,Direction,Family,Genus,Species,Code,Number,Stage,Activity,Comment,Attribute9,Attribute10 )
+  write.table(temp2, file=paste(unique(id),"_3DPoints.txt",sep=""), sep="\t",quote=FALSE,row.names = FALSE)
+}
+
+### Event measure files ----
+# Import count----
+count.files<-dir(checked,pattern="_count.txt") # 120
+count <- data.frame(FileID = count.files) %>%
+  dplyr::mutate(file_contents = map(FileID,          
+                                    ~ read_tsv(file.path(checked, .),col_types = cols(.default = "c"))))%>%tidyr::unnest()%>%
+  mutate(Count=as.integer(Count))%>%
+  replace_na(list(Count = 0))%>%
+  glimpse()%>%
+  mutate(Family=ifelse(Genus%in%c("Pagrus"),"Sparidae",Family))%>%
+  mutate(Genus=ifelse(Genus%in%c("Asymbolis"),"Asymbolus",Genus))%>%
+  mutate(Family=ifelse(Genus%in%c("Aulopus"),"Aulopidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Hime"),"Aulopidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Scombridae"),"Scombridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Odax"),"Odacidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Carangidae"),"Carangidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Labridae"),"Labridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Carcharhinidae"),"Carcharhinidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Parika"),"Monacanthidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Scaridae"),"Scaridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Platycephalidae"),"Platycephalidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Monacanthidae"),"Monacanthidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Apogonidae"),"Apogonidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Blenniidae"),"Blenniidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Bothidae"),"Bothidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Dasyatidae"),"Dasyatidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Galeus"),"Scyliorhinidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Gobiidae"),"Gobiidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Hemiramphidae"),"Hemiramphidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Lethrinidae"),"Lethrinidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Pomacentridae"),"Pomacentridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Serranidae"),"Serranidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Malakichthys"),"Acropomatidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Xyrichtys"),"Labridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Threpterius"),"Chironemidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Crinodus"),"Aplodactylidae",Family))%>%
+  mutate(Genus=ifelse(Genus%in%c("Parapercus"),"Parapercis",Genus))%>%
+  mutate(Family=ifelse(Genus%in%c("Sepioteuthis"),"Loliginidae",Family))%>%
+  mutate(Family=ifelse(Species%in%c("Labrid"),"Labridae",Family))%>%
+  mutate(Species=ifelse(Species%in%c("Labrid"),"spp",Species))%>%
+  mutate(Family=ifelse(Genus%in%c("Asteroidea"),"Asteroidea",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Scyphozoa"),"Scyphozoa",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Aurelia"),"Ulmaridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Cyanea"),"Cyaneidae",Family))%>% 
+  mutate(Family=ifelse(Genus%in%c("Uniophora"),"Asteriidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Octopodidae"),"Octopodidae",Family))%>% 
+  mutate(Family=ifelse(Genus%in%c("Syngnathidae"),"Syngnathidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Coscinasterias"),"Asteriidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Ovalipes"),"Polybiidae",Family))
+
+count[] <- sapply(count, remove.commas)
+## There are a lot of campaigns missing family ----
+# life-history-sheet ---
+master<-gs_title("Australia.life.history")%>%gs_read_csv(ws = "australia.life.history")
+
+### Life-history families----
+families<-master%>%
+  distinct(Family, Genus)%>%
+  dplyr::rename(family.new=Family)
+
+count<-left_join(count,families)%>%
+  mutate(Family=ifelse(is.na(Family),family.new,Family))%>%
+  replace_na(list(Family = "Unknown",Genus = "Unknown", Species= "spp"))
+
+missing.fam<-count%>%
+  filter(is.na(Family))%>% # quite a few will error
+  distinct(Family,Genus,Species)
+  filter(!Genus%in%c("Refer","Unidentified","unknown","Unknown","Sepioteuthis","fish","Fish","hermit","Hermit","Parapercus","No"))
+
+# Import length ----
+length.files<-dir(checked,pattern="_length.txt") # 66
+length <- data.frame(file = length.files) %>%
+  dplyr::mutate(file_contents = map(file,          
+                                    ~ read_tsv(file.path(checked, .),col_types = cols(.default = "c"))))
+
+length<-tidyr::unnest(length)%>%glimpse()%>%
+  mutate(Family=ifelse(Genus%in%c("Pagrus"),"Sparidae",Family))%>%
+  mutate(Genus=ifelse(Genus%in%c("Asymbolis"),"Asymbolus",Genus))%>%
+  mutate(Family=ifelse(Genus%in%c("Aulopus"),"Aulopidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Hime"),"Aulopidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Scombridae"),"Scombridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Odax"),"Odacidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Carangidae"),"Carangidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Labridae"),"Labridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Carcharhinidae"),"Carcharhinidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Parika"),"Monacanthidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Scaridae"),"Scaridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Platycephalidae"),"Platycephalidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Monacanthidae"),"Monacanthidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Apogonidae"),"Apogonidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Blenniidae"),"Blenniidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Bothidae"),"Bothidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Dasyatidae"),"Dasyatidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Galeus"),"Scyliorhinidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Gobiidae"),"Gobiidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Hemiramphidae"),"Hemiramphidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Lethrinidae"),"Lethrinidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Pomacentridae"),"Pomacentridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Serranidae"),"Serranidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Malakichthys"),"Acropomatidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Xyrichtys"),"Labridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Threpterius"),"Chironemidae",Family))%>%
+  mutate(Family=ifelse(Species%in%c("Labrid"),"Labridae",Family))%>%
+  mutate(Species=ifelse(Species%in%c("Labrid"),"spp",Species))%>%
+  mutate(Family=ifelse(Genus%in%c("Asteroidea"),"Asteroidea",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Scyphozoa"),"Scyphozoa",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Aurelia"),"Ulmaridae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Cyanea"),"Cyaneidae",Family))%>% 
+  mutate(Family=ifelse(Genus%in%c("Uniophora"),"Asteriidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Octopodidae"),"Octopodidae",Family))%>% 
+  mutate(Family=ifelse(Genus%in%c("Syngnathidae"),"Syngnathidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Coscinasterias"),"Asteriidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Ovalipes"),"Polybiidae",Family))%>%
+  mutate(Family=ifelse(Genus%in%c("Coryphaenoides"),"Macrouridae",Family))%>%
+  mutate(Family=ifelse(Species%in%c("wrasse"),"Labridae",Family))%>%
+  mutate(Genus=ifelse(Genus%in%c("brown"),"Unknown",Genus))%>%
+  mutate(Species=ifelse(Species%in%c("wrasse"),"spp",Species))
+  
+length<-left_join(length,families)%>%
+  mutate(Family=ifelse(is.na(Family),family.new,Family))%>%
+  replace_na(list(Family = "Unknown",Genus = "Unknown", Species= "spp"))
+
+missing.fam<-length%>%
+  filter(is.na(Family))%>%distinct(Family,Genus,Species) # quite a few will error
+  filter(!Genus=="Refer")
+unique(length$Count)
+
+
+## Save Files ----
+# Save count----
+setwd(new.dir)
+names(count)
+uniq <- unique(unlist(count$CampaignID))
+
+for (i in 1:length(uniq)){
+  temp <- subset(count, CampaignID == uniq[i])
+  id<-temp$CampaignID
+  CampaignID<-id
+  Sample<-as.factor(temp$Sample)
+  Family<-temp$Family
+  Genus<-temp$Genus
+  Species<-temp$Species
+  Count<-as.integer(temp$Count)
+  
+  # Bind colums together and save txt files --
+  temp2<-data.frame(Sample, Family, Genus, Species, Count)
+  write.csv(temp2, file=paste(unique(id),"_Count.csv",sep=""), quote=FALSE,row.names = FALSE)
+}
+
+# Save length -----
+setwd(new.dir)
+names(length)
+uniq <- unique(unlist(length$CampaignID))
+
+for (i in 1:length(uniq)){
+  temp <- subset(length, CampaignID == uniq[i])
+  id<-temp$CampaignID
+  CampaignID<-id
+  Sample<-as.factor(temp$Sample)
+  Family<-temp$Family
+  Genus<-temp$Genus
+  Species<-temp$Species
+  Count<-as.integer(temp$Count)
+  Length<-temp$Length
+  
+  # Bind colums together and save txt files --
+  temp2<-data.frame(Sample, Family, Genus, Species, Count,Length)
+  write.csv(temp2, file=paste(unique(id),"_Length.csv",sep=""), quote=FALSE,row.names = FALSE)
+}
+
+test<-lengths%>%
+  filter(is.na(Family))
+
+
+setwd(new.dir)
+dir()
+p<-read.delim("2015-BMP-StereoBRUV_Points.txt")

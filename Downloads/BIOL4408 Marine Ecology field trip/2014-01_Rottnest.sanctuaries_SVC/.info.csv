@@ -1,0 +1,5 @@
+"","name","value","is_filter"
+"1","Annotation: Taxa that have been ID'd","Spiny lobster",FALSE
+"2","Annotation: Habitat information from each sample","Cover of benthos and score of complexity",TRUE
+"3","Annotation: Type of Length measure","Carapace length",FALSE
+"4","Annotation: Lengths measured for","All spiny lobster",TRUE
