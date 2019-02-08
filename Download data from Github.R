@@ -70,4 +70,3 @@ length <-list.files(path=download.dir,
 ## Save maxn and length files ----
 setwd(tidy.dir)
 write.csv(maxn,paste(name,"maxn.csv",sep="_"),row.names = FALSE)
-write.csv(length3dpoints,paste(name,"length3dpoints.csv",sep="_"),row.names = FALSE)
