@@ -65,7 +65,10 @@ length <-list.files(path=download.dir,
   map_df(~read_files_csv(.))%>%
   glimpse()
 
-
+# Add metadata to count ----
+dat<-as.data.frame(count)%>%
+  tidyr::complete(nesting(project,campaignid,sample,family,genus,species),legal.sublegal,fill = list(count = 0))%>%
+  left_join(.,metadata)
 
 ## Save maxn and length files ----
 setwd(tidy.dir)
