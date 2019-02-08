@@ -72,4 +72,4 @@ dat<-as.data.frame(count)%>%
 
 ## Save maxn and length files ----
 setwd(tidy.dir)
-write.csv(maxn,paste(name,"maxn.csv",sep="_"),row.names = FALSE)
+write.csv(dat,paste(name,"dat.csv",sep="_"),row.names = FALSE)
